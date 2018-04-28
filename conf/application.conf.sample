@@ -2,3 +2,28 @@
 
 play.http.secret.key="<o4oA3bY;N0WbSuim>^;`C@zCxxC4ug6lCP:<^bqWVuO3R^rRKz0Iq6=6?um4G_u"
 play.filters.enabled=[]
+
+db.crypto_tax {
+  driver = "org.postgresql.Driver"
+  url = "jdbc:postgresql://localhost:5432/crypto_tax_db"
+  username = "crypto_tax_user"
+  password = "crypto_tax_user_pass"
+}
+
+# db connections = ((physical_core_count * 2) + effective_spindle_count)
+fixedConnectionPool = 9
+
+play.db {
+  prototype {
+    hikaricp.minimumIdle = ${fixedConnectionPool}
+    hikaricp.maximumPoolSize = ${fixedConnectionPool}
+  }
+}
+
+database.dispatcher {
+  executor = "thread-pool-executor"
+  throughput = 1
+  thread-pool-executor {
+    fixed-pool-size = ${fixedConnectionPool}
+  }
+}
