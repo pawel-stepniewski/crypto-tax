@@ -2,12 +2,15 @@ package controllers
 
 import java.util.Date
 
+import controllers.CalculateIncomeTaxController.IncomeTaxRequest
 import javax.inject.{Inject, Singleton}
 import play.api.libs.functional.syntax._
 import play.api.libs.json.{JsPath, Reads}
 import play.api.mvc.{AbstractController, ControllerComponents}
+import services.CalculateIncomeTaxService
+import services.CalculateIncomeTaxService.CalculateIncomeTaxCmd
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
 object CalculateIncomeTaxController {
 
@@ -22,13 +25,20 @@ object CalculateIncomeTaxController {
 }
 
 @Singleton
-class CalculateIncomeTaxController @Inject()(cc: ControllerComponents)
+class CalculateIncomeTaxController @Inject()(calculateIncomeTaxService: CalculateIncomeTaxService,
+                                             cc: ControllerComponents)
                                             (implicit ec: ExecutionContext)
                                    extends AbstractController(cc) {
 
   private val log = play.api.Logger(this.getClass)
 
-  def incomeTax = Action.async(parse.json) { implicit request =>
-    Future.successful(NotImplemented)
+
+  def incomeTax = Action.async(parse.json[IncomeTaxRequest]) { implicit request => {
+    val req: IncomeTaxRequest = request.body
+
+    log.info(s"IncomeTaxRequest received. From ${req.from}, to ${req.to}")
+    calculateIncomeTaxService.incomeTax(CalculateIncomeTaxCmd(req.from, req.to))
+      .map(r => NotImplemented)
+  }
   }
 }

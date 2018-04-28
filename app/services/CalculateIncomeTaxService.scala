@@ -1,0 +1,31 @@
+package services
+
+import java.util.Date
+
+import daos.TransactionDao
+import javax.inject.{Inject, Singleton}
+import services.CalculateIncomeTaxService.{CalculateIncomeTaxCmd, CalculateIncomeTaxResult}
+
+import scala.concurrent.ExecutionContext
+
+object CalculateIncomeTaxService {
+
+  case class CalculateIncomeTaxCmd(fromDate: Date, toDate: Date)
+  case class CalculateIncomeTaxResult()
+}
+
+
+@Singleton
+class CalculateIncomeTaxService @Inject()(transactionDao: TransactionDao)
+                                         (implicit ec: ExecutionContext) {
+
+
+  private val log = play.api.Logger(this.getClass)
+
+
+  def incomeTax(cmd: CalculateIncomeTaxCmd) = {
+    transactionDao.selectAll(cmd.fromDate, cmd.toDate)
+      .map(_.map(tx => log.info(s"Found transaction: ${tx.id}")))
+      .map(txs => CalculateIncomeTaxResult())
+  }
+}
