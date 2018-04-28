@@ -3,7 +3,7 @@ package models
 import daos.TransactionDao.Transaction
 import models.TransactionsFifo.{BuyerTransaction, SellerTransaction}
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{HashMap, ListBuffer, Map}
 
 object TransactionsFifo {
 
@@ -30,8 +30,8 @@ class TransactionsFifo {
 
   private val log = play.api.Logger(this.getClass)
 
-  private var buyerTxs: ListBuffer[BuyerTransaction] = ListBuffer()
-  private var sellerTxs: ListBuffer[SellerTransaction] = ListBuffer()
+  private val buyerTxs: Map[String, ListBuffer[BuyerTransaction]] = HashMap()
+  private val sellerTxs: Map[String, ListBuffer[SellerTransaction]] = HashMap()
 
   def add(tx: Transaction): Unit = {
     tx.txRole match {
@@ -41,9 +41,9 @@ class TransactionsFifo {
     }
 
     def addBuyerTx(tx: Transaction) = {
-      buyerTxs.isEmpty match {
-        case true  => buyerTxs += toBuyerTransaction(tx)
-        case false => if(!buyerTxs.last.addTransaction(tx)) buyerTxs += toBuyerTransaction(tx)
+      buyerTxs.get(tx.cryptoSymbol) match {
+        case Some(txs) => if(!txs.last.addTransaction(tx)) txs += toBuyerTransaction(tx)
+        case None      => buyerTxs.put(tx.cryptoSymbol, ListBuffer(toBuyerTransaction(tx)))
       }
     }
 
@@ -53,7 +53,12 @@ class TransactionsFifo {
   }
 
   def printBuyersForTest: String = {
-    buyerTxs.map(bTx => s"BuyerTransaction: ${bTx.exchangeRate}, ${bTx.amount}, ${bTx.value}").mkString("\n")
+
+    def print(txs: ListBuffer[BuyerTransaction]): String = {
+      txs.map(bTx => s"BuyerTransaction: ${bTx.exchangeRate}, ${bTx.amount}, ${bTx.value}").mkString("\n")
+    }
+
+    buyerTxs.map{case (crypto, txs) => s"${crypto} => \n${print(txs)}\n"}.mkString("\n")
   }
 
 }
