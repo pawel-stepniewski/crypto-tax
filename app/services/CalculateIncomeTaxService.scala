@@ -4,6 +4,7 @@ import java.util.Date
 
 import daos.TransactionDao
 import javax.inject.{Inject, Singleton}
+import models.TransactionsFifo
 import services.CalculateIncomeTaxService.{CalculateIncomeTaxCmd, CalculateIncomeTaxResult}
 
 import scala.concurrent.ExecutionContext
@@ -24,8 +25,11 @@ class CalculateIncomeTaxService @Inject()(transactionDao: TransactionDao)
 
 
   def incomeTax(cmd: CalculateIncomeTaxCmd) = {
+    val transactionsFifo: TransactionsFifo = new TransactionsFifo()
+
     transactionDao.selectAll(cmd.fromDate, cmd.toDate)
-      .map(_.map(tx => log.info(s"Found transaction: ${tx.id}")))
+      .map(_.map(transactionsFifo.add(_)))
+      .map(txs => log.debug(transactionsFifo.printBuyersForTest))
       .map(txs => CalculateIncomeTaxResult())
   }
 }
