@@ -1,0 +1,4 @@
+# https://www.playframework.com/documentation/latest/Configuration
+
+play.http.secret.key="<o4oA3bY;N0WbSuim>^;`C@zCxxC4ug6lCP:<^bqWVuO3R^rRKz0Iq6=6?um4G_u"
+play.filters.enabled=[]

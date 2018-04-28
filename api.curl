@@ -1,0 +1,6 @@
+curl -v -X POST http://localhost:9000/income_tax \
+    -H "Content-Type: application/json" -d '
+    {
+        "from": "2017-01-01",
+        "to":   "2017-12-31"
+    }'
