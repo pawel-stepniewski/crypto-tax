@@ -19,7 +19,8 @@ object TransactionDao {
                          txValue: BigInt,
                          exchangeRate: BigInt,
                          txRole: String,
-                         commission: Option[BigInt],
+                         commissionSell: Option[BigInt],
+                         commissionBuy: Option[BigInt],
                          transactionDateTime: Date)
 
   val transactionRowParser = {
@@ -29,10 +30,11 @@ object TransactionDao {
     get[BigInt]("TX_VALUE") ~
     get[BigInt]("EXCHANGE_RATE") ~
     get[String]("TX_ROLE") ~
-    get[Option[BigInt]]("COMMISSION") ~
+    get[Option[BigInt]]("COMMISSION_SELL") ~
+    get[Option[BigInt]]("COMMISSION_BUY") ~
     get[Date]("TX_DATETIME") map {
-    case id ~ cryptoSymbol ~ cryptoAmount ~ txValue ~ exchangeRate ~ txRole ~ commission ~ txDateTime =>
-        Transaction(TransactionId(id), cryptoSymbol, cryptoAmount, txValue, exchangeRate, txRole, commission, txDateTime)
+    case id ~ cryptoSymbol ~ cryptoAmount ~ txValue ~ exchangeRate ~ txRole ~ commissionSell ~ commissionBuy ~ txDateTime =>
+        Transaction(TransactionId(id), cryptoSymbol, cryptoAmount, txValue, exchangeRate, txRole, commissionSell, commissionBuy, txDateTime)
     }
 
   }

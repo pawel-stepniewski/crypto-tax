@@ -33,7 +33,8 @@ object TransactionsFifo {
                             txValue: CryptoValue,
                             exchangeRate: CryptoValue,
                             txRole: String,
-                            commission: Option[CryptoValue],
+                            commissionSell: Option[CryptoValue],
+                            commissionBuy: Option[CryptoAmount],
                             transactionDateTime: Date)
 
   private object NewTransaction {
@@ -44,7 +45,8 @@ object TransactionsFifo {
       CryptoValue(tx.txValue),
       CryptoValue(tx.exchangeRate),
       tx.txRole,
-      tx.commission.map(CryptoValue(_)),
+      tx.commissionSell.map(CryptoValue(_)),
+      tx.commissionBuy.map(CryptoAmount(_)),
       tx.transactionDateTime)
   }
 
