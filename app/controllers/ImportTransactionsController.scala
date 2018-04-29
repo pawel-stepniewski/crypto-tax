@@ -26,19 +26,36 @@ class ImportTransactionsController @Inject()(transactionDao: TransactionDao,
       .map(v => Accepted)
   }
 
+  //TODO: Refactor
   private def toNewTransaction(line: String): NewTransaction = {
-    val fields = line.split(';').map(_.replaceAll("\\.", "")).map(_.replaceAll("\"", "")).map(_.trim)
+    val fields = line.split(';').map(_.replaceAll("\"", "")).map(_.trim)
 
     val df: SimpleDateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
 
     Try {
+
+      val txValue = BigInt(fields(6).split("\\.") match {case arr: Array[String] => s"${arr(0)}${if(arr.length == 2) arr(1).padTo(2, "0").mkString else "00" }"})
+
+      val exchangeRate = BigInt(fields(4).split("\\.") match {case arr: Array[String] => s"${arr(0)}${if(arr.length == 2) arr(1).padTo(2, "0").mkString else "00"}"})
+
+      val cryptoAmount = BigInt(fields(5).split("\\.") match {case arr: Array[String] => s"${arr(0)}${if(arr.length == 2) arr(1).padTo(8, "0").mkString else "00000000"}"})
+
+      val commissionBuy =
+        if (fields.length == 8 || fields(8).isEmpty) None
+        else Some(BigInt(fields(8).replaceAll("\\-", "").split("\\.") match {case arr: Array[String] => s"${arr(0)}${if(arr.length == 2) arr(1).padTo(8, "0").mkString else "00000000"}"}))
+
+      val commissionSell =
+        if (fields(7).isEmpty) None
+        else Some(BigInt(fields(7).replaceAll("\\-", "").split("\\.") match {case arr: Array[String] => s"${arr(0)}${if(arr.length == 2) arr(1).padTo(2, "0").mkString else "00"}"}))
+
+
       NewTransaction(cryptoSymbol = fields(0).substring(0, 3),
-        cryptoAmount = BigInt(fields(5)),
-        txValue = BigInt(fields(6)),
-        exchangeRate = BigInt(fields(4)),
+        cryptoAmount = cryptoAmount,
+        txValue = txValue,
+        exchangeRate = exchangeRate,
         txRole = if (fields(2) == "Kupno") "BUYER" else "SELLER",
-        commissionSell = if (fields(7).isEmpty) None else Some(BigInt(fields(7).replaceAll("\\-", ""))),
-        commissionBuy = if (fields.length == 8 || fields(8).isEmpty) None else Some(BigInt(fields(8).replaceAll("\\-", ""))),
+        commissionSell = commissionSell,
+        commissionBuy = commissionBuy,
         transactionDateTime = df.parse(fields(1)))
     } match {
       case Success(v) => v
