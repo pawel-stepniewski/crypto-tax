@@ -4,10 +4,10 @@ Simple web app to help calculate cryptocurrency trading income tax (Poland)
 *Program is only a help in tax settlement. The author does not take any responsibility for the correctness of the result.*
 
 ## Security notes
-Any authenication mechanism is not implemented.
+Authenication mechanism has not been implemented (app should be requested only from trusted machines).
 
 ## What it do?
-It helps to calculate income tax to PIT37 (calculation relying on FIFO method)
+It helps to calculate income tax to PIT36 (private person, not company!) - calculation relying on FIFO method.
 
 Programs print on standard output all 'sell' transactions with it value and cost. To calculate your all incomes and costs just sum all transactions values and costs.
 
@@ -25,13 +25,13 @@ curl -v -X POST http://localhost:9000/import \
 
 Sample csv file format (similar to BitBay export file):
 
-**Important**: Remember to fill commissions fields. Without them result can be not correct.
+**Important**: Remember to fill commissions fields. Without them result can be incorrect.
 
 ```
 "Market";"Transaction date";"Type";"Kind";"Exchange rate";"Amount";"Value";"Commission PLN";"Commission Crypto"
 "BTC - PLN";"31-08-2017 15:28:47";"Kupno";"Taker";"16800.00";"0.36725233";"6169.84";;-0.00143229
 ```
-Type => Acceptable value: "Kupno" ('Buy' transactions), "Sprzedaż" ('Sell transactions').
+Type => Acceptable values: "Kupno" ('Buy' transactions), "Sprzedaż" ('Sell' transactions).
 
 Kind => Redundant field, not used.
 
@@ -39,22 +39,23 @@ Kind => Redundant field, not used.
 
 Sample curl to calculate transactions.
 
-**Important**: "from" field should be set to date before first history transaction and "to" field should points last transaction date
+**Important**: "from" field should be set to date before first history transaction and "to" field should points last transaction date.
 
 
-if you started trading in 2017 then to calculate all transaction in 2017 you should call
+If you started trading in 2017 then to calculate all transaction in 2017 you should call
 ```
 curl -v -X POST http://localhost:9000/income_tax \
     -H "Content-Type: application/json" -d '
     {
         "from": "2017-01-01",
-        "to":   "2017-12-31"
+        "to":   "2018-01-01"
     }'
 ```
 
 ## Sample result
 
 Seller transaction => internal_id; crypto_symbol; value_PLN; cost_PLN, transaction_date
+
 Buyer transaction => crypto_symbol; exchange_rate; crypto_amount; value_PLN
 ```
 SELLER TRANSACTIONS:
