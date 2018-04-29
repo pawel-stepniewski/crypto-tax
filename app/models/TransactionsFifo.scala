@@ -1,44 +1,82 @@
 package models
 
+import java.util.Date
+
 import daos.TransactionDao.{Transaction, TransactionId}
-import models.TransactionsFifo.{BuyerTransaction, SellerTransaction, SellerTransactionRow}
+import models.TransactionsFifo._
 
 import scala.annotation.tailrec
 import scala.collection.mutable.{HashMap, Map}
+import scala.math.BigDecimal.RoundingMode
 
 object TransactionsFifo {
 
-  case class SellerTransactionRow(id: TransactionId, cryptoSymbol: String, income: BigInt, cost: BigInt) {
-    def incomeMinusCost: BigInt = income - cost
+  case class SellerTransactionRow(id: TransactionId,
+                                  cryptoSymbol: String,
+                                  value: String,
+                                  cost: String,
+                                  incomeMinusCost: String,
+                                  txDateTime: Date) {
 
-    def printForTests: String = s"SellerTransactionRow(id ${id}, cryptoSymbol ${cryptoSymbol}, income ${income}, cost ${cost})"
+    def printForTests: String = s"SellerTransactionRow(id ${id}, cryptoSymbol ${cryptoSymbol}, income ${value}, cost ${cost}, date ${txDateTime})"
   }
 
   object SellerTransactionRow {
-    def apply(cryptoSymbol: String, sTx: SellerTransaction): SellerTransactionRow = new SellerTransactionRow(sTx.id, cryptoSymbol, sTx.value, sTx.costValue)
+    def apply(cryptoSymbol: String, sTx: SellerTransaction): SellerTransactionRow =
+      new SellerTransactionRow(sTx.id, cryptoSymbol, sTx.value.toString, sTx.costValue.toString, (sTx.value - sTx.costValue).toString, sTx.txDateTime)
   }
 
-  private case class SellerTransaction(id: TransactionId, exchangeRate: BigInt, amount: BigInt, value: BigInt, costAmount: BigInt, costValue: BigInt) {
 
-    def amountToCost = amount - costAmount
+  private case class NewTransaction(id: TransactionId,
+                            cryptoSymbol: String,
+                            cryptoAmount: CryptoAmount,
+                            txValue: CryptoValue,
+                            exchangeRate: CryptoValue,
+                            txRole: String,
+                            commission: Option[CryptoValue],
+                            transactionDateTime: Date)
+
+  private object NewTransaction {
+
+    def apply(tx: Transaction): NewTransaction = new NewTransaction(tx.id,
+      tx.cryptoSymbol,
+      CryptoAmount(tx.cryptoAmount),
+      CryptoValue(tx.txValue),
+      CryptoValue(tx.exchangeRate),
+      tx.txRole,
+      tx.commission.map(CryptoValue(_)),
+      tx.transactionDateTime)
+  }
+
+
+  private case class SellerTransaction(id: TransactionId,
+                                       exchangeRate: CryptoValue,
+                                       amount: CryptoAmount,
+                                       value: CryptoValue,
+                                       costAmount: CryptoAmount,
+                                       costValue: CryptoValue,
+                                       txDateTime: Date) {
+
+    def amountToCost: CryptoAmount = amount - costAmount
 
     def includeAllCost: Boolean = amount == costAmount
 
     def addCost(bTx: BuyerTransaction): SellerTransaction = {
-      def limitCostValue(cost: BigInt): BigInt = {
+      def limitCostValue(cost: CryptoValue): CryptoValue = {
         if(cost > value) value else cost
       }
 
       (amountToCost - bTx.amount) match {
-        case x if x <= 0 => SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(amount*bTx.exchangeRate))
-        case x if x > 0  => SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, costValue + limitCostValue(amount*bTx.exchangeRate))
+        case x if x <= 0 => SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(bTx.exchangeRate * amount), txDateTime)
+        case x           => SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, costValue + limitCostValue(bTx.exchangeRate * amount), txDateTime)
       }
     }
   }
 
-  private case class BuyerTransaction(exchangeRate: BigInt, amount: BigInt, value: BigInt) {
 
-    def merge(tx: Transaction): Option[BuyerTransaction] = {
+  private case class BuyerTransaction(exchangeRate: CryptoValue, amount: CryptoAmount, value: CryptoValue) {
+
+    def merge(tx: NewTransaction): Option[BuyerTransaction] = {
       (exchangeRate == tx.exchangeRate) match {
         case true  => Some(BuyerTransaction(exchangeRate, amount + tx.cryptoAmount, value + tx.txValue))
         case false => None
@@ -47,6 +85,53 @@ object TransactionsFifo {
 
     def refund(sTx: SellerTransaction): Option[BuyerTransaction] = {
       if (amount - sTx.amountToCost <= 0) None else Some(BuyerTransaction(exchangeRate, amount - sTx.amountToCost, exchangeRate*(amount - sTx.amountToCost)))
+    }
+  }
+
+
+  private sealed trait CryptoNumber
+
+  private final case class CryptoValue(value: BigDecimal) extends CryptoNumber {
+
+    def *(amount: CryptoAmount): CryptoValue = CryptoValue((value * amount.amount).setScale(2, RoundingMode.HALF_UP))
+
+    def >(otherValue: CryptoValue): Boolean = value > otherValue.value
+
+    def +(otherAmount: CryptoValue): CryptoValue = CryptoValue(value + otherAmount.value)
+
+    def -(otherAmount: CryptoValue): CryptoValue = CryptoValue(value - otherAmount.value)
+
+    override def toString: String = value.toString()
+
+  }
+
+  private object CryptoValue {
+
+    def apply(value: BigInt): CryptoValue = {
+      val vs = value.toString()
+      new CryptoValue(BigDecimal(s"${vs.take(vs.length - 2)}.${vs.takeRight(2)}").setScale(2, RoundingMode.HALF_UP))
+    }
+  }
+
+
+  private final case class CryptoAmount(amount: BigDecimal) extends CryptoNumber {
+
+    def ==(otherAmount: CryptoAmount): Boolean = amount == otherAmount.amount
+
+    def -(otherAmount: CryptoAmount): CryptoAmount = CryptoAmount(amount - otherAmount.amount)
+
+    def +(otherAmount: CryptoAmount): CryptoAmount = CryptoAmount(amount + otherAmount.amount)
+
+    def <=(bigDecimal: BigDecimal): Boolean = amount <= bigDecimal
+
+    override def toString: String = amount.toString()
+  }
+
+  private object CryptoAmount {
+
+    def apply(value: BigInt): CryptoAmount = {
+      val vs = value.toString()
+      new CryptoAmount(BigDecimal(s"${vs.take(vs.length - 8)}.${vs.takeRight(8)}").setScale(2, RoundingMode.HALF_UP))
     }
   }
 }
@@ -65,19 +150,20 @@ class TransactionsFifo {
 
   def add(tx: Transaction): Unit = {
 
-    def addBuyerTx(tx: Transaction) = {
-      buyerTxs.get(tx.cryptoSymbol) match {
-        case Some(bTxs :+ last) => buyerTxs.put(tx.cryptoSymbol, last.merge(tx).map(bTxs :+ _).getOrElse(bTxs :+ last :+ toBuyerTx(tx)))
-        case Some(Nil)       => buyerTxs.put(tx.cryptoSymbol, List(toBuyerTx(tx)))
-        case None               => buyerTxs.put(tx.cryptoSymbol, List(toBuyerTx(tx)))
+    def addBuyerTx(newTx: NewTransaction) = {
+      log.debug(s"Add buyer transaction to fifo. TxId ${newTx.id}")
+      buyerTxs.get(newTx.cryptoSymbol) match {
+        case Some(bTxs :+ last) => buyerTxs.put(newTx.cryptoSymbol, last.merge(newTx).map(bTxs :+ _).getOrElse(bTxs :+ last :+ toBuyerTx(newTx)))
+        case Some(Nil)       => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
+        case None               => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
       }
     }
 
-    def toBuyerTx(tx: Transaction): BuyerTransaction = {
-      BuyerTransaction(tx.exchangeRate, tx.cryptoAmount, tx.txValue)
+    def toBuyerTx(newTx: NewTransaction): BuyerTransaction = {
+      BuyerTransaction(newTx.exchangeRate, newTx.cryptoAmount, newTx.txValue)
     }
 
-    def addSellerTx(tx: Transaction) = {
+    def addSellerTx(newTx: NewTransaction) = {
       @tailrec
       def addCost(sTx: SellerTransaction, bTxs: List[BuyerTransaction]): (SellerTransaction, List[BuyerTransaction]) = {
         def refundBTxs(sTx: SellerTransaction, bTxs: List[BuyerTransaction]): List[BuyerTransaction] = {
@@ -87,14 +173,14 @@ class TransactionsFifo {
           }
         }
 
-        log.debug(s"Recursive call of addCost function. TxId: ${tx.id}, includeAllCosts ${sTx.includeAllCost}, amount ${sTx.amount}, costAmount ${sTx.costAmount}")
+        log.debug(s"Recursive call of addCost function. TxId: ${newTx.id}, includeAllCosts ${sTx.includeAllCost}, amount ${sTx.amount}, costAmount ${sTx.costAmount}")
         if (bTxs.isEmpty) {
-          log.warn(s"Transaction doesn't include all buy costs! Did you import all buyer transaction? TxId ${tx.id}.")
+          log.warn(s"Transaction doesn't include all buy costs! Did you import all buyer transaction? TxId ${newTx.id}.")
           (sTx, bTxs)
         }
 
         else {
-          log.debug(s"Add cost to seller transaction. TxId ${tx.id}, sTxAmountToCost ${sTx.amountToCost}, bTxAmount ${bTxs.head.amount}")
+          log.debug(s"Add cost to seller transaction. TxId ${newTx.id}, sTxAmountToCost ${sTx.amountToCost}, bTxAmount ${bTxs.head.amount}")
           sTx.addCost(bTxs.head) match {
             case cSTx if cSTx.includeAllCost => (cSTx, refundBTxs(sTx, bTxs))
             case cSTx                        => addCost(cSTx, refundBTxs(sTx, bTxs))
@@ -102,25 +188,27 @@ class TransactionsFifo {
         }
       }
 
-      val bTxs = buyerTxs.getOrElse(tx.cryptoSymbol, List())
-      val effects = addCost(toSellerTx(tx), bTxs)
+      log.debug(s"Add seller transaction to fifo. TxId ${newTx.id}")
+      val bTxs = buyerTxs.getOrElse(newTx.cryptoSymbol, List())
+      val effects = addCost(toSellerTx(newTx), bTxs)
 
-      buyerTxs.put(tx.cryptoSymbol, effects._2)
+      buyerTxs.put(newTx.cryptoSymbol, effects._2)
 
-      sellerTxs.get(tx.cryptoSymbol) match {
-        case Some(sTxs) => sellerTxs.put(tx.cryptoSymbol, sTxs :+ effects._1)
-        case None       => sellerTxs.put(tx.cryptoSymbol, List(effects._1))
+      sellerTxs.get(newTx.cryptoSymbol) match {
+        case Some(sTxs) => sellerTxs.put(newTx.cryptoSymbol, sTxs :+ effects._1)
+        case None       => sellerTxs.put(newTx.cryptoSymbol, List(effects._1))
       }
     }
 
-    def toSellerTx(tx: Transaction): SellerTransaction = {
-      SellerTransaction(tx.id, tx.exchangeRate, tx.cryptoAmount, tx.txValue, BigInt(0), BigInt(0))
+    def toSellerTx(newTx: NewTransaction): SellerTransaction = {
+      SellerTransaction(newTx.id, newTx.exchangeRate, newTx.cryptoAmount, newTx.txValue, CryptoAmount(BigInt(0)), CryptoValue(BigInt(0)), newTx.transactionDateTime)
     }
 
     log.debug(s"Processing transaction. TxId ${tx.id}, type ${tx.txRole}.")
-    tx.txRole match {
-      case "BUYER"  => addBuyerTx(tx)
-      case "SELLER" => addSellerTx(tx)
+    val newTx = NewTransaction(tx)
+    newTx.txRole match {
+      case "BUYER"  => addBuyerTx(newTx)
+      case "SELLER" => addSellerTx(newTx)
       case _ => throw new IllegalArgumentException(s"Unknown role value. Acceptable: 'BUYER', 'SELLER'. TxId ${tx.id}.")
     }
   }

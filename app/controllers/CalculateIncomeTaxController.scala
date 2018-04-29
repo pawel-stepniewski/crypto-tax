@@ -38,7 +38,7 @@ class CalculateIncomeTaxController @Inject()(calculateIncomeTaxService: Calculat
 
     log.info(s"IncomeTaxRequest received. From ${req.from}, to ${req.to}")
     calculateIncomeTaxService.incomeTax(CalculateIncomeTaxCmd(req.from, req.to))
-      .map(r => NotImplemented)
+      .map(r => Accepted)
   }
   }
 }
