@@ -59,6 +59,8 @@ object TransactionsFifo {
                                        costValue: CryptoValue,
                                        txDateTime: Date) {
 
+    private val log = play.api.Logger(this.getClass)
+
     def amountToCost: CryptoAmount = amount - costAmount
 
     def includeAllCost: Boolean = amount == costAmount
@@ -69,8 +71,14 @@ object TransactionsFifo {
       }
 
       (amountToCost - bTx.amount) match {
-        case x if x <= 0 => SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(bTx.exchangeRate * amount), txDateTime)
-        case x           => SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, costValue + limitCostValue(bTx.exchangeRate * amount), txDateTime)
+        case x if x <= 0 => {
+          log.debug(s"Add cost to seller transaction. Full cost! STx + BTx = CostTx => (${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.value}) = (${amount}, ${limitCostValue(costValue + (bTx.exchangeRate * amountToCost))})")
+          SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(costValue + (bTx.exchangeRate * amountToCost)), txDateTime)
+        }
+        case x           => {
+          log.debug(s"Add cost to seller transaction. Partially cost! STx + BTx = CostTx => (${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.value}) = (${costAmount + bTx.amount}, ${limitCostValue(costValue + bTx.value)})")
+          SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, limitCostValue(costValue + bTx.value), txDateTime)
+        }
       }
     }
   }
@@ -80,24 +88,11 @@ object TransactionsFifo {
 
     private val log = play.api.Logger(this.getClass)
 
-    def merge(tx: BuyerTransaction): Option[BuyerTransaction] = {
-      (exchangeRate == tx.exchangeRate) match {
-        case true  => {
-          log.debug(s"Merge transaction. Current + New = Merged => (${amount}, ${value}) + (${tx.amount}, ${tx.value}) = (${amount + tx.amount}, ${value + tx.value})")
-          Some(BuyerTransaction(exchangeRate, amount + tx.amount, value + tx.value))
-        }
-        case false => {
-          log.debug(s"Different exchange rate - transaction (${tx.amount}, ${tx.value}) not merged.")
-          None
-        }
-      }
-    }
-
     def refund(sTx: SellerTransaction): Option[BuyerTransaction] = {
       if (amount - sTx.amountToCost <= 0) None
       else {
         log.debug(s"Buyer transaction as cost. Seller - Buyer = Result => (${sTx.amountToCost}, ${exchangeRate*sTx.amountToCost}) - (${amount}, ${value}) = (${amount - sTx.amountToCost}, ${exchangeRate*(amount - sTx.amountToCost)})")
-        Some(BuyerTransaction(exchangeRate, amount - sTx.amountToCost, exchangeRate * (amount - sTx.amountToCost)))
+        Some(BuyerTransaction(exchangeRate, amount - sTx.amountToCost, value - (exchangeRate * sTx.amountToCost)))
       }
     }
   }
@@ -168,8 +163,8 @@ class TransactionsFifo {
     def addBuyerTx(newTx: NewTransaction) = {
       log.debug(s"Add buyer transaction to fifo. TxId ${newTx.id}, exchangeRate ${newTx.exchangeRate}.")
       buyerTxs.get(newTx.cryptoSymbol) match {
-        case Some(bTxs :+ last) => buyerTxs.put(newTx.cryptoSymbol, last.merge(toBuyerTx(newTx)).map(bTxs :+ _).getOrElse(bTxs :+ last :+ toBuyerTx(newTx)))
-        case Some(Nil)       => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
+        case Some(bTxs :+ last) => buyerTxs.put(newTx.cryptoSymbol, bTxs :+ last :+ toBuyerTx(newTx))
+        case Some(Nil)          => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
         case None               => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
       }
     }
