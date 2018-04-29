@@ -110,7 +110,7 @@ object TransactionsFifo {
   private object CryptoValue {
 
     def apply(value: BigInt): CryptoValue = {
-      val vs = value.toString()
+      val vs = "%03d".format(value)
       new CryptoValue(BigDecimal(s"${vs.take(vs.length - 2)}.${vs.takeRight(2)}").setScale(2, RoundingMode.HALF_UP))
     }
   }
@@ -132,8 +132,8 @@ object TransactionsFifo {
   private object CryptoAmount {
 
     def apply(value: BigInt): CryptoAmount = {
-      val vs = value.toString()
-      new CryptoAmount(BigDecimal(s"${vs.take(vs.length - 8)}.${vs.takeRight(8)}").setScale(2, RoundingMode.HALF_UP))
+      val vs = "%09d".format(value)
+      new CryptoAmount(BigDecimal(s"${vs.take(vs.length - 8)}.${vs.takeRight(8)}").setScale(8, RoundingMode.HALF_UP))
     }
   }
 }
@@ -147,6 +147,7 @@ class TransactionsFifo {
 
   private val sellerTxs: Map[String, List[SellerTransaction]] = HashMap()
 
+  def buyerTransactionsForTest: String = buyerTxs.map(t => t._2.map(l => s"crypto ${t._1} rate ${l.exchangeRate}, amount ${l.amount}, value ${l.value }")).flatten.mkString("\n")
 
   def sellerTransactions: List[SellerTransactionRow] = sellerTxs.map(t => t._2.map(SellerTransactionRow(t._1, _))).flatten.toList
 

@@ -4,7 +4,7 @@ import java.util.Date
 
 import anorm.SqlParser.get
 import anorm.{SqlStringInterpolation, ~}
-import daos.TransactionDao.Transaction
+import daos.TransactionDao.{NewTransaction, Transaction, TransactionId}
 import javax.inject.{Inject, Singleton}
 import play.api.db.DBApi
 
@@ -22,6 +22,14 @@ object TransactionDao {
                          commissionSell: Option[BigInt],
                          commissionBuy: Option[BigInt],
                          transactionDateTime: Date)
+  case class NewTransaction(cryptoSymbol: String,
+                            cryptoAmount: BigInt,
+                            txValue: BigInt,
+                            exchangeRate: BigInt,
+                            txRole: String,
+                            commissionSell: Option[BigInt],
+                            commissionBuy: Option[BigInt],
+                            transactionDateTime: Date)
 
   val transactionRowParser = {
     get[Long]("ID") ~
@@ -61,5 +69,37 @@ class TransactionDao @Inject()(dbapi: DBApi)(implicit ec: DatabaseExecutionConte
       )
     }(ec)
   }
+
+  def insert(nTx: NewTransaction): Future[TransactionId] = Future {
+    db.withConnection { implicit connection =>
+      val id: Option[Long] =
+        SQL"""
+              insert into TRANSACTIONS(CRYPTO_SYMBOL,
+                                       CRYPTO_AMOUNT,
+                                       TX_VALUE,
+                                       EXCHANGE_RATE,
+                                       TX_ROLE,
+                                       COMMISSION_SELL,
+                                       COMMISSION_BUY,
+                                       TX_DATETIME)
+              values(${nTx.cryptoSymbol},
+                     ${nTx.cryptoAmount},
+                     ${nTx.txValue},
+                     ${nTx.exchangeRate},
+                     ${nTx.txRole},
+                     ${nTx.commissionSell},
+                     ${nTx.commissionBuy},
+                     ${nTx.transactionDateTime})
+          """
+          .executeInsert()
+
+      if (id.isEmpty) {
+        log.error(s"Query returns empty id. Record might have been inserted!")
+        throw new RuntimeException("Query returns empty id. Record might have been inserted!")
+      }
+
+      TransactionId(id.get)
+    }
+  }(ec)
 
 }

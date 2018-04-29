@@ -4,3 +4,4 @@
 # ~~~~
 
 POST    /income_tax                 controllers.CalculateIncomeTaxController.incomeTax
+POST    /import                     controllers.ImportTransactionsController.importTransactions
