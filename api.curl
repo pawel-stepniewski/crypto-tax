@@ -5,8 +5,8 @@ curl -v -X POST http://localhost:9000/income_tax \
         "to":   "2017-12-31"
     }'
 
-curl -v -X POST \
+curl -v -X POST http://localhost:9000/import \
   -H "Content-Type: text/csv" \
   -H "Expect:" \
   --data-binary @Documents/bitocin/import/BitBay_tx_1708.csv \
-  http://localhost:9000/import
+
