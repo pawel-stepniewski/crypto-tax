@@ -29,8 +29,8 @@ class CalculateIncomeTaxService @Inject()(transactionDao: TransactionDao)
 
     transactionDao.selectAll(cmd.fromDate, cmd.toDate)
       .map(_.map(transactionsFifo.add(_)))
-      .map(txs => log.info(transactionsFifo.sellerTransactions.map(_.printForTests).mkString("\n")))
-      .map(txs => log.info(s"\n${transactionsFifo.buyerTransactionsForTest}"))
+      .map(txs => log.info(s"\nSELLER TRANSACTIONS: \n${transactionsFifo.sellerTransactions.map(_.print).mkString("\n")}"))
+      .map(txs => log.info(s"\nBUYER TRANSACTIONS:  \n${transactionsFifo.buyerTransactionsForTest}"))
       .map(txs => CalculateIncomeTaxResult())
   }
 }
