@@ -70,32 +70,41 @@ object TransactionsFifo {
         if(cost > value) value else cost
       }
 
-      (amountToCost - bTx.amount) match {
-        case x if x <= 0 => {
-          log.debug(s"Add cost to seller transaction. Full cost! STx + BTx = CostTx => (${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.value}) = (${amount}, ${limitCostValue(costValue + (bTx.exchangeRate * amountToCost))})")
-          SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(costValue + (bTx.exchangeRate * amountToCost)), txDateTime)
-        }
-        case x           => {
-          log.debug(s"Add cost to seller transaction. Partially cost! STx + BTx = CostTx => (${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.value}) = (${costAmount + bTx.amount}, ${limitCostValue(costValue + bTx.value)})")
-          SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, limitCostValue(costValue + bTx.value), txDateTime)
-        }
+      if (amountToCost <= bTx.amount) {
+        log.debug(s"Add cost to seller transaction. Full cost! STx + BTx = CostTx => (${amount}, ${value}, ${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.exchangeRate}) = (${amount}, ${value}, ${amount}, ${limitCostValue(costValue + (bTx.exchangeRate * amountToCost))})")
+        SellerTransaction(id, exchangeRate, amount, value, amount, limitCostValue(costValue + (bTx.exchangeRate * amountToCost)), txDateTime)
+      }
+      else {
+        log.debug(s"Add cost to seller transaction. Partially cost! STx + BTx = CostTx => (${amount}, ${value}, ${costAmount}, ${costValue}) + (${bTx.amount}, ${bTx.exchangeRate}) = (${amount}, ${value}, ${costAmount + bTx.amount}, ${limitCostValue(costValue + (bTx.exchangeRate * bTx.amount))})")
+        SellerTransaction(id, exchangeRate, amount, value, costAmount + bTx.amount, limitCostValue(costValue + (bTx.exchangeRate * bTx.amount)), txDateTime)
       }
     }
   }
 
 
-  private case class BuyerTransaction(exchangeRate: CryptoValue, amount: CryptoAmount, value: CryptoValue) {
+  private case class BuyerTransaction(exchangeRate: CryptoValue, amount: CryptoAmount) {
 
     private val log = play.api.Logger(this.getClass)
 
     def refund(sTx: SellerTransaction): Option[BuyerTransaction] = {
-      if (amount - sTx.amountToCost <= 0) None
+      if (amount <= sTx.amountToCost) {
+        log.debug(s"Buyer transaction FULLY used. Buyer - Seller = Result => (${amount}, ${exchangeRate}) - (${sTx.amountToCost}) = (${amount - sTx.amountToCost}, ${exchangeRate})")
+        None
+      }
       else {
-        log.debug(s"Buyer transaction as cost. Seller - Buyer = Result => (${sTx.amountToCost}, ${exchangeRate*sTx.amountToCost}) - (${amount}, ${value}) = (${amount - sTx.amountToCost}, ${exchangeRate*(amount - sTx.amountToCost)})")
-        Some(BuyerTransaction(exchangeRate, amount - sTx.amountToCost, value - (exchangeRate * sTx.amountToCost)))
+        log.debug(s"Buyer transaction as cost. Buyer - Seller = Result => (${amount}, ${exchangeRate}) - (${sTx.amountToCost}) = (${amount - sTx.amountToCost}, ${exchangeRate})")
+        Some(BuyerTransaction(exchangeRate, amount - sTx.amountToCost))
       }
     }
   }
+
+  private object BuyerTransaction {
+
+    def apply(newTx: NewTransaction): BuyerTransaction = {
+      BuyerTransaction(newTx.exchangeRate, newTx.commissionBuy.map(newTx.cryptoAmount - _).getOrElse(newTx.cryptoAmount))
+    }
+  }
+
 
 
   private sealed trait CryptoNumber
@@ -133,6 +142,8 @@ object TransactionsFifo {
 
     def <=(bigDecimal: BigDecimal): Boolean = amount <= bigDecimal
 
+    def <=(otherAmount: CryptoAmount): Boolean = amount <= otherAmount.amount
+
     override def toString: String = amount.toString()
   }
 
@@ -154,7 +165,7 @@ class TransactionsFifo {
 
   private val sellerTxs: Map[String, List[SellerTransaction]] = HashMap()
 
-  def buyerTransactionsForTest: String = buyerTxs.map(t => t._2.map(l => s"${t._1}; ${l.exchangeRate}; ${l.amount}; ${l.value }")).flatten.mkString("\n")
+  def buyerTransactionsForTest: String = buyerTxs.map(t => t._2.map(l => s"${t._1}; ${l.exchangeRate}; ${l.amount}")).flatten.mkString("\n")
 
   def sellerTransactions: List[SellerTransactionRow] = sellerTxs.map(t => t._2.map(SellerTransactionRow(t._1, _))).flatten.toList
 
@@ -163,14 +174,10 @@ class TransactionsFifo {
     def addBuyerTx(newTx: NewTransaction) = {
       log.debug(s"Add buyer transaction to fifo. TxId ${newTx.id}, exchangeRate ${newTx.exchangeRate}.")
       buyerTxs.get(newTx.cryptoSymbol) match {
-        case Some(bTxs :+ last) => buyerTxs.put(newTx.cryptoSymbol, bTxs :+ last :+ toBuyerTx(newTx))
-        case Some(Nil)          => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
-        case None               => buyerTxs.put(newTx.cryptoSymbol, List(toBuyerTx(newTx)))
+        case Some(bTxs :+ last) => buyerTxs.put(newTx.cryptoSymbol, bTxs :+ last :+ BuyerTransaction(newTx))
+        case Some(Nil)          => buyerTxs.put(newTx.cryptoSymbol, List(BuyerTransaction(newTx)))
+        case None               => buyerTxs.put(newTx.cryptoSymbol, List(BuyerTransaction(newTx)))
       }
-    }
-
-    def toBuyerTx(newTx: NewTransaction): BuyerTransaction = {
-      BuyerTransaction(newTx.exchangeRate, newTx.commissionBuy.map(newTx.cryptoAmount - _).getOrElse(newTx.cryptoAmount), newTx.txValue)
     }
 
     def addSellerTx(newTx: NewTransaction) = {
